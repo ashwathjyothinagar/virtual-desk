@@ -123,33 +123,36 @@ recordCallButton.addEventListener('click', () => {
 
 // Start recording the call
 function startRecording() {
-  if (!remoteStream) {
-    console.error('No remote stream available to record.');
+  if (!localStream || !remoteStream) {
+    console.error('Local or remote stream is not available.');
     return;
   }
 
-  // Combine local and remote streams (optional, depending on requirements)
-  const combinedStream = new MediaStream([
-    ...localStream.getTracks(),
-    ...remoteStream.getTracks(),
-  ]);
+  // Combine local and remote streams
+  const combinedStream = new MediaStream();
+  localStream.getTracks().forEach((track) => combinedStream.addTrack(track));
+  remoteStream.getTracks().forEach((track) => combinedStream.addTrack(track));
 
   // Initialize MediaRecorder
-  mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
+  try {
+    mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
 
-  // Capture data chunks
-  mediaRecorder.ondataavailable = (event) => {
-    if (event.data.size > 0) {
-      recordedChunks.push(event.data);
-    }
-  };
+    // Capture data chunks
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        recordedChunks.push(event.data);
+      }
+    };
 
-  // Handle recording stop
-  mediaRecorder.onstop = saveRecording;
+    // Handle recording stop
+    mediaRecorder.onstop = saveRecording;
 
-  // Start recording
-  mediaRecorder.start();
-  console.log('Recording started.');
+    // Start recording
+    mediaRecorder.start();
+    console.log('Recording started.');
+  } catch (error) {
+    console.error('Error initializing MediaRecorder:', error);
+  }
 }
 
 // Stop recording
