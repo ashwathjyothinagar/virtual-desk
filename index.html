@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WebRTC Video Call</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="home-screen">
+    <h1>WebRTC Video Call</h1>
+    <button id="startCall">Start Call</button>
+  </div>
+  <div class="video-call-screen" hidden>
+    <div class="video-container">
+      <video id="localVideo" autoplay muted></video>
+      <div id="remoteVideos"></div>
+    </div>
+    <div class="controls">
+      <button id="muteAudio">Mute</button>
+      <button id="stopVideo">Stop Video</button>
+      <button id="startRecording">Start Recording</button>
+      <button id="stopRecording" disabled>Stop Recording</button>
+      <button id="endCall">End Call</button>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
