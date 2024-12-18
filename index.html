@@ -7,14 +7,15 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <h1>WebRTC Video Call</h1>
-  <div class="video-container">
-    <video id="localVideo" autoplay playsinline muted></video>
-    <video id="remoteVideo" autoplay playsinline></video>
+  <h1>WebRTC Video Call with Recording</h1>
+  <div>
+    <video id="localVideo" autoplay muted></video>
+    <video id="remoteVideo" autoplay></video>
   </div>
-  <div class="controls">
+  <div>
     <button id="startCall">Start Call</button>
-    <button id="recordCall">Start Recording</button>
+    <button id="startRecording">Start Recording</button>
+    <button id="stopRecording">Stop Recording</button>
   </div>
   <script src="script.js"></script>
 </body>
