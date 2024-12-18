@@ -1,5 +1,4 @@
 const signalingServer = new WebSocket('wss://virtual-desk-xf5i.onrender.com');
-
 // Select video elements
 const localVideo = document.getElementById('localVideo');
 const remoteVideo = document.getElementById('remoteVideo');
@@ -10,23 +9,40 @@ let localStream;
 let remoteStream;
 let peerConnection;
 
-signalingServer.onmessage = async (message) => {
-  const data = JSON.parse(message.data);
+// WebSocket signaling server
 
-  if (data.type === 'offer') {
-    await handleOffer(data.offer);
-  } else if (data.type === 'answer') {
-    await handleAnswer(data.answer);
-  } else if (data.type === 'candidate') {
-    await handleCandidate(data.candidate);
+signalingServer.onmessage = async (event) => {
+  const message = await parseMessage(event.data);
+  if (!message) return;
+
+  const { type, payload } = message;
+
+  if (type === 'offer') {
+    await handleOffer(payload);
+  } else if (type === 'answer') {
+    await handleAnswer(payload);
+  } else if (type === 'candidate') {
+    await handleCandidate(payload);
   }
 };
 
+// Helper to parse WebSocket messages
+async function parseMessage(data) {
+  if (data instanceof Blob) {
+    const text = await data.text();
+    return JSON.parse(text);
+  }
+  try {
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Invalid JSON message:', data, error);
+    return null;
+  }
+}
+
 // ICE server configuration
 const configuration = {
-  iceServers: [
-    { urls: 'stun:stun.l.google.com:19302' }, // Google STUN server
-  ],
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
 };
 
 // Start local video stream
@@ -35,27 +51,19 @@ async function startLocalVideo() {
     localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
     localVideo.srcObject = localStream;
 
-    // Set up RTCPeerConnection
     peerConnection = new RTCPeerConnection(configuration);
 
-    // Add local stream to the connection
-    localStream.getTracks().forEach((track) => {
-      peerConnection.addTrack(track, localStream);
-    });
+    localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
 
-    // Handle remote stream
     remoteStream = new MediaStream();
     peerConnection.ontrack = (event) => {
-      event.streams[0].getTracks().forEach((track) => {
-        remoteStream.addTrack(track);
-      });
+      event.streams[0].getTracks().forEach((track) => remoteStream.addTrack(track));
       remoteVideo.srcObject = remoteStream;
     };
 
-    // Handle ICE candidates
     peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
-        signalingServer.send(JSON.stringify({ type: 'candidate', candidate: event.candidate }));
+        signalingServer.send(JSON.stringify({ type: 'candidate', payload: event.candidate }));
       }
     };
   } catch (error) {
@@ -67,7 +75,7 @@ async function startLocalVideo() {
 async function callUser() {
   const offer = await peerConnection.createOffer();
   await peerConnection.setLocalDescription(offer);
-  signalingServer.send(JSON.stringify({ type: 'offer', offer: offer }));
+  signalingServer.send(JSON.stringify({ type: 'offer', payload: offer }));
 }
 
 // Handle incoming offer
@@ -75,7 +83,7 @@ async function handleOffer(offer) {
   await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
   const answer = await peerConnection.createAnswer();
   await peerConnection.setLocalDescription(answer);
-  signalingServer.send(JSON.stringify({ type: 'answer', answer: answer }));
+  signalingServer.send(JSON.stringify({ type: 'answer', payload: answer }));
 }
 
 // Handle incoming answer
@@ -89,9 +97,7 @@ async function handleCandidate(candidate) {
 }
 
 // Start call button event listener
-startCallButton.addEventListener('click', () => {
-  callUser();
-});
+startCallButton.addEventListener('click', callUser);
 
 // Start local video stream on page load
 startLocalVideo();
