@@ -101,3 +101,77 @@ startCallButton.addEventListener('click', callUser);
 
 // Start local video stream on page load
 startLocalVideo();
+
+const recordCallButton = document.getElementById('recordCall');
+
+// Variables for recording
+let mediaRecorder;
+let recordedChunks = [];
+
+// Handle recording
+recordCallButton.addEventListener('click', () => {
+  if (recordCallButton.textContent === 'Start Recording') {
+    startRecording();
+    recordCallButton.textContent = 'Stop Recording';
+  } else {
+    stopRecording();
+    recordCallButton.textContent = 'Start Recording';
+  }
+});
+
+// Start recording the call
+function startRecording() {
+  if (!remoteStream) {
+    console.error('No remote stream available to record.');
+    return;
+  }
+
+  // Combine local and remote streams (optional, depending on requirements)
+  const combinedStream = new MediaStream([
+    ...localStream.getTracks(),
+    ...remoteStream.getTracks(),
+  ]);
+
+  // Initialize MediaRecorder
+  mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
+
+  // Capture data chunks
+  mediaRecorder.ondataavailable = (event) => {
+    if (event.data.size > 0) {
+      recordedChunks.push(event.data);
+    }
+  };
+
+  // Handle recording stop
+  mediaRecorder.onstop = saveRecording;
+
+  // Start recording
+  mediaRecorder.start();
+  console.log('Recording started.');
+}
+
+// Stop recording
+function stopRecording() {
+  if (mediaRecorder) {
+    mediaRecorder.stop();
+    console.log('Recording stopped.');
+  }
+}
+
+// Save the recorded video
+function saveRecording() {
+  const blob = new Blob(recordedChunks, { type: 'video/webm' });
+  const url = URL.createObjectURL(blob);
+
+  // Create a download link
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = url;
+  a.download = `recording-${Date.now()}.webm`;
+  document.body.appendChild(a);
+  a.click();
+
+  // Cleanup
+  URL.revokeObjectURL(url);
+  recordedChunks = [];
+}
