@@ -1,4 +1,4 @@
-const signalingServer = new WebSocket('ws://192.168.1.6:8080');
+const signalingServer = new WebSocket('wss://virtual-desk-xf5i.onrender.com');
 let localStream;
 let peerConnection;
 let mediaRecorder;
