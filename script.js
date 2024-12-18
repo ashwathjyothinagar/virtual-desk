@@ -1,109 +1,179 @@
 const signalingServer = new WebSocket('wss://virtual-desk-xf5i.onrender.com');
 
-let localStream, remoteStream, peerConnection, mediaRecorder, recordedChunks = [];
 
-    const localVideo = document.getElementById('localVideo');
-    const remoteVideo = document.getElementById('remoteVideo');
-    const startCallButton = document.getElementById('startCall');
-    const startRecordingButton = document.getElementById('startRecording');
-    const stopRecordingButton = document.getElementById('stopRecording');
+// Select video elements
+const localVideo = document.getElementById('localVideo');
+const remoteVideo = document.getElementById('remoteVideo');
+const startCallButton = document.getElementById('startCall');
 
-    const configuration = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+// Variables for WebRTC
+let localStream;
+let remoteStream;
+let peerConnection;
 
-    startCallButton.onclick = async () => {
-      localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-      localVideo.srcObject = localStream;
+// WebSocket signaling server
 
-      peerConnection = new RTCPeerConnection(configuration);
+signalingServer.onmessage = async (event) => {
+  const message = await parseMessage(event.data);
+  if (!message) return;
 
-      // Add local stream tracks to the connection
-      localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
+  const { type, payload } = message;
 
-      // Handle incoming remote stream
-      peerConnection.ontrack = (event) => {
-        remoteStream = event.streams[0];
-        remoteVideo.srcObject = remoteStream;
-        console.log('Remote stream received.');
-      };
+  if (type === 'offer') {
+    await handleOffer(payload);
+  } else if (type === 'answer') {
+    await handleAnswer(payload);
+  } else if (type === 'candidate') {
+    await handleCandidate(payload);
+  }
+};
 
-      peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-          signalingServer.send(JSON.stringify({ type: 'candidate', candidate: event.candidate }));
-        }
-      };
+// Helper to parse WebSocket messages
+async function parseMessage(data) {
+  if (data instanceof Blob) {
+    const text = await data.text();
+    return JSON.parse(text);
+  }
+  try {
+    return JSON.parse(data);
+  } catch (error) {
+    console.error('Invalid JSON message:', data, error);
+    return null;
+  }
+}
 
-      signalingServer.onmessage = async (message) => {
-        const data = JSON.parse(message.data);
+// ICE server configuration
+const configuration = {
+  iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
+};
 
-        if (data.type === 'offer') {
-          await peerConnection.setRemoteDescription(new RTCSessionDescription(data.offer));
-          const answer = await peerConnection.createAnswer();
-          await peerConnection.setLocalDescription(answer);
-          signalingServer.send(JSON.stringify({ type: 'answer', answer }));
-        } else if (data.type === 'answer') {
-          await peerConnection.setRemoteDescription(new RTCSessionDescription(data.answer));
-        } else if (data.type === 'candidate') {
-          await peerConnection.addIceCandidate(new RTCIceCandidate(data.candidate));
-        }
-      };
+// Start local video stream
+async function startLocalVideo() {
+  try {
+    localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+    localVideo.srcObject = localStream;
 
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      signalingServer.send(JSON.stringify({ type: 'offer', offer }));
+    peerConnection = new RTCPeerConnection(configuration);
+
+    localStream.getTracks().forEach((track) => peerConnection.addTrack(track, localStream));
+
+    remoteStream = new MediaStream();
+    peerConnection.ontrack = (event) => {
+      event.streams[0].getTracks().forEach((track) => remoteStream.addTrack(track));
+      remoteVideo.srcObject = remoteStream;
     };
 
-    startRecordingButton.onclick = () => {
-      if (!localStream || !remoteStream) {
-        alert('Both local and remote streams must be available to record.');
-        return;
+    peerConnection.onicecandidate = (event) => {
+      if (event.candidate) {
+        signalingServer.send(JSON.stringify({ type: 'candidate', payload: event.candidate }));
       }
-
-      const combinedStream = new MediaStream([
-        ...localStream.getTracks(),
-        ...remoteStream.getTracks(),
-      ]);
-
-      mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
-
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          recordedChunks.push(event.data);
-        }
-      };
-
-      mediaRecorder.onstop = saveRecording;
-
-      mediaRecorder.start();
-      console.log('Recording started.');
     };
+  } catch (error) {
+    console.error('Error accessing media devices.', error);
+  }
+}
 
-    stopRecordingButton.onclick = () => {
-      mediaRecorder.stop();
-      console.log('Recording stopped.');
-    };
+// Create and send an offer
+async function callUser() {
+  const offer = await peerConnection.createOffer();
+  await peerConnection.setLocalDescription(offer);
+  signalingServer.send(JSON.stringify({ type: 'offer', payload: offer }));
+}
 
-    function saveRecording() {
-      const blob = new Blob(recordedChunks, { type: 'video/webm' });
-      const formData = new FormData();
-      formData.append('video', blob, `recording-${Date.now()}.webm`);
+// Handle incoming offer
+async function handleOffer(offer) {
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+  const answer = await peerConnection.createAnswer();
+  await peerConnection.setLocalDescription(answer);
+  signalingServer.send(JSON.stringify({ type: 'answer', payload: answer }));
+}
 
-      fetch('/upload', {
-        method: 'POST',
-        body: formData,
-      })
-        .then((response) => {
-          if (response.ok) {
-            console.log('Recording uploaded successfully.');
-            alert('Recording uploaded successfully!');
-          } else {
-            console.error('Failed to upload recording.');
-            alert('Failed to upload recording.');
-          }
-        })
-        .catch((error) => {
-          console.error('Error uploading recording:', error);
-          alert('Error uploading recording.');
-        });
+// Handle incoming answer
+async function handleAnswer(answer) {
+  await peerConnection.setRemoteDescription(new RTCSessionDescription(answer));
+}
 
-      recordedChunks = [];
+// Handle incoming ICE candidate
+async function handleCandidate(candidate) {
+  await peerConnection.addIceCandidate(new RTCIceCandidate(candidate));
+}
+
+// Start call button event listener
+startCallButton.addEventListener('click', callUser);
+
+// Start local video stream on page load
+startLocalVideo();
+
+const recordCallButton = document.getElementById('recordCall');
+
+// Variables for recording
+let mediaRecorder;
+let recordedChunks = [];
+
+// Handle recording
+recordCallButton.addEventListener('click', () => {
+  if (recordCallButton.textContent === 'Start Recording') {
+    startRecording();
+    recordCallButton.textContent = 'Stop Recording';
+  } else {
+    stopRecording();
+    recordCallButton.textContent = 'Start Recording';
+  }
+});
+
+// Start recording the call
+function startRecording() {
+  if (!remoteStream) {
+    console.error('No remote stream available to record.');
+    return;
+  }
+
+  // Combine local and remote streams (optional, depending on requirements)
+  const combinedStream = new MediaStream([
+    ...localStream.getTracks(),
+    ...remoteStream.getTracks(),
+  ]);
+
+  // Initialize MediaRecorder
+  mediaRecorder = new MediaRecorder(combinedStream, { mimeType: 'video/webm' });
+
+  // Capture data chunks
+  mediaRecorder.ondataavailable = (event) => {
+    if (event.data.size > 0) {
+      recordedChunks.push(event.data);
     }
+  };
+
+  // Handle recording stop
+  mediaRecorder.onstop = saveRecording;
+
+  // Start recording
+  mediaRecorder.start();
+  console.log('Recording started.');
+}
+
+// Stop recording
+function stopRecording() {
+  if (mediaRecorder) {
+    mediaRecorder.stop();
+    console.log('Recording stopped.');
+  }
+}
+
+// Save the recorded video
+function saveRecording() {
+  const blob = new Blob(recordedChunks, { type: 'video/webm' });
+  const url = URL.createObjectURL(blob);
+
+  // Create a download link
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = url;
+  a.download = `recording-${Date.now()}.webm`;
+  document.body.appendChild(a);
+  a.click();
+
+  // Cleanup
+  URL.revokeObjectURL(url);
+  recordedChunks = [];
+}
