@@ -1,21 +1,33 @@
 const signalingServer = new WebSocket('wss://virtual-desk-xf5i.onrender.com');
-
     let peerConnection;
+    const operatorId = 1;
     const localVideo = document.getElementById('localVideo');
     const remoteVideo = document.getElementById('remoteVideo');
 
-    document.getElementById('callButton').addEventListener('click', async () => {
-      signalingServer.send(JSON.stringify({ type: 'call', hotelId: 'Hotel1' }));
-    });
+    signalingServer.onopen = () => {
+      signalingServer.send(JSON.stringify({ type: 'registerOperator', operatorId }));
+    };
 
     signalingServer.onmessage = async (event) => {
       const message = JSON.parse(event.data);
-      if (message.type === 'callStart') {
+      if (message.type === 'incomingCall') {
+        document.getElementById('callNotification').textContent = `Incoming call from ${message.hotelId}`;
+        document.getElementById('acceptCall').style.display = 'block';
+      } else if (message.type === 'callStart') {
         setupWebRTC();
       } else if (message.type === 'signal') {
         await handleSignal(message.payload);
       }
     };
+
+    document.getElementById('toggleAvailability').addEventListener('click', () => {
+      signalingServer.send(JSON.stringify({ type: 'toggleAvailability', operatorId }));
+    });
+
+    document.getElementById('acceptCall').addEventListener('click', () => {
+      signalingServer.send(JSON.stringify({ type: 'acceptCall', operatorId }));
+      document.getElementById('acceptCall').style.display = 'none';
+    });
 
     async function setupWebRTC() {
       const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
@@ -33,10 +45,6 @@ const signalingServer = new WebSocket('wss://virtual-desk-xf5i.onrender.com');
           signalingServer.send(JSON.stringify({ type: 'signal', payload: { candidate: event.candidate } }));
         }
       };
-
-      const offer = await peerConnection.createOffer();
-      await peerConnection.setLocalDescription(offer);
-      signalingServer.send(JSON.stringify({ type: 'signal', payload: { sdp: peerConnection.localDescription } }));
     }
 
     async function handleSignal(payload) {
